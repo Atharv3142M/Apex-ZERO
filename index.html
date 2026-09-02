@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP-32 WIRELESS RECON — Project Deck</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050807;
+  --panel:#0a0f0c;
+  --green:#39ff6e;
+  --green-dim:#1d7a3f;
+  --green-faint:#0f2a18;
+  --amber:#ffb000;
+  --amber-dim:#8a5f10;
+  --red:#ff4b4b;
+  --ink:#c8e6cf;
+  --ink-dim:#5e8a6b;
+  --border:#1c3a26;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:#000;overflow:hidden;font-family:'IBM Plex Mono',monospace}
+
+/* ===== stage & scaling ===== */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
+#deck{width:1280px;height:720px;position:relative;background:var(--bg);overflow:hidden;box-shadow:0 0 80px rgba(57,255,110,.12)}
+
+/* ===== CRT overlay ===== */
+.scanlines{position:absolute;inset:0;pointer-events:none;z-index:60;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);}
+.vignette{position:absolute;inset:0;pointer-events:none;z-index:61;
+  background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%);}
+.flicker{position:absolute;inset:0;pointer-events:none;z-index:62;background:rgba(57,255,110,.02);animation:flick 4s infinite steps(1)}
+@keyframes flick{0%,100%{opacity:.3}48%{opacity:.7}49%{opacity:.1}52%{opacity:.6}}
+
+/* ===== slide base ===== */
+.slide{position:absolute;inset:0;padding:70px 90px;display:none;flex-direction:column;color:var(--ink)}
+.slide.active{display:flex}
+.slide .content{flex:1;display:flex;flex-direction:column;position:relative;z-index:2}
+
+/* grid background */
+.gridbg{position:absolute;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(57,255,110,.04) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(57,255,110,.04) 1px,transparent 1px);
+  background-size:48px 48px}
+
+/* ===== typography ===== */
+.kicker{font-family:'VT323',monospace;font-size:22px;letter-spacing:4px;color:var(--green-dim);text-transform:uppercase}
+.kicker b{color:var(--amber);font-weight:400}
+h1{font-family:'VT323',monospace;font-size:96px;line-height:.92;color:var(--green);text-shadow:0 0 24px rgba(57,255,110,.45);letter-spacing:1px}
+h2{font-family:'VT323',monospace;font-size:58px;line-height:1;color:var(--green);text-shadow:0 0 18px rgba(57,255,110,.4)}
+.sub{font-size:15px;color:var(--ink-dim);line-height:1.7}
+
+/* terminal window chrome */
+.term{border:1px solid var(--border);background:var(--panel);position:relative}
+.term::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(rgba(57,255,110,.03),transparent 40%)}
+.termbar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--border);
+  font-size:12px;color:var(--ink-dim);letter-spacing:2px;text-transform:uppercase}
+.dot{width:9px;height:9px;border-radius:50%;border:1px solid var(--ink-dim)}
+.dot.r{border-color:var(--red);background:rgba(255,75,75,.25)}
+.dot.a{border-color:var(--amber);background:rgba(255,176,0,.2)}
+.dot.g{border-color:var(--green);background:rgba(57,255,110,.2)}
+.termbody{padding:22px 26px}
+
+/* prompt line */
+.prompt{color:var(--green-dim)}
+.prompt .p{color:var(--green)}
+.cursor{display:inline-block;width:10px;height:1.1em;background:var(--green);vertical-align:text-bottom;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* list rows */
+.row{display:flex;gap:18px;padding:13px 0;border-bottom:1px dashed var(--green-faint);align-items:baseline}
+.row:last-child{border-bottom:none}
+.row .n{color:var(--amber);font-family:'VT323',monospace;font-size:26px;min-width:44px}
+.row .t{color:var(--green);font-weight:600;font-size:15px;letter-spacing:.5px;min-width:250px}
+.row .d{color:var(--ink-dim);font-size:14px;line-height:1.55}
+
+/* status chips */
+.chip{display:inline-block;border:1px solid var(--green-dim);color:var(--green);padding:3px 12px;font-size:12px;letter-spacing:2px;text-transform:uppercase}
+.chip.amber{border-color:var(--amber-dim);color:var(--amber)}
+
+/* footer */
+.foot{display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:22px;
+  border-top:1px solid var(--green-faint);font-size:11px;color:var(--ink-dim);letter-spacing:3px;text-transform:uppercase;z-index:2}
+.foot .pg{color:var(--green-dim);font-family:'VT323',monospace;font-size:18px}
+
+/* nav */
+.navbtn{position:fixed;z-index:100;bottom:24px;width:44px;height:44px;border:1px solid var(--green-dim);
+  background:rgba(5,8,7,.9);color:var(--green);font-family:'VT323',monospace;font-size:26px;cursor:pointer;transition:.15s}
+.navbtn:hover{background:var(--green);color:#000}
+#prev{right:84px}#next{right:28px}
+#counter{position:fixed;z-index:100;bottom:34px;right:140px;color:var(--green-dim);font-family:'VT323',monospace;font-size:22px;letter-spacing:3px}
+
+/* ===== animations ===== */
+@keyframes typein{from{max-width:0}to{max-width:100%}}
+.type{overflow:hidden;white-space:nowrap;animation:typein 1.4s steps(40,end)}
+@keyframes fadeup{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+.slide.active .content>*{animation:fadeup .5s ease both}
+.slide.active .content>*:nth-child(1){animation-delay:.05s}
+.slide.active .content>*:nth-child(2){animation-delay:.15s}
+.slide.active .content>*:nth-child(3){animation-delay:.25s}
+.slide.active .content>*:nth-child(4){animation-delay:.35s}
+.slide.active .content>*:nth-child(5){animation-delay:.45s}
+
+/* ASCII deco */
+.ascii{font-family:'VT323',monospace;color:var(--green-dim);white-space:pre;font-size:14px;line-height:1.1}
+
+/* two-col helpers */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+
+/* big stat */
+.big{font-family:'VT323',monospace;font-size:72px;color:var(--amber);text-shadow:0 0 16px rgba(255,176,0,.35);line-height:1}
+.biglbl{font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--ink-dim)}
+
+/* timeline */
+.tl{position:relative;padding-left:34px}
+.tl::before{content:'';position:absolute;left:9px;top:8px;bottom:8px;width:2px;background:var(--green-faint)}
+.tl .ev{position:relative;margin-bottom:18px}
+.tl .ev::before{content:'';position:absolute;left:-31px;top:5px;width:12px;height:12px;background:var(--bg);
+  border:2px solid var(--green-dim)}
+.tl .ev.done::before{background:var(--green);border-color:var(--green);box-shadow:0 0 10px rgba(57,255,110,.6)}
+.tl .ev.now::before{background:var(--amber);border-color:var(--amber);box-shadow:0 0 10px rgba(255,176,0,.6)}
+.tl .ev h4{font-size:15px;color:var(--green);letter-spacing:1px}
+.tl .ev.done h4::after{content:' [DONE]';color:var(--green-dim);font-size:11px}
+.tl .ev.now h4::after{content:' [IN PROGRESS]';color:var(--amber);font-size:11px}
+.tl .ev p{font-size:13px;color:var(--ink-dim);line-height:1.5;margin-top:3px}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{color:var(--amber);text-align:left;padding:10px 14px;border-bottom:2px solid var(--amber-dim);
+  font-size:11px;letter-spacing:3px;text-transform:uppercase;font-weight:600}
+td{padding:12px 14px;border-bottom:1px dashed var(--green-faint);color:var(--ink);line-height:1.5}
+td.k{color:var(--green);font-weight:600;white-space:nowrap}
+
+/* progress bar for boot */
+.barwrap{height:16px;border:1px solid var(--green-dim);margin-top:10px}
+.bar{height:100%;background:repeating-linear-gradient(90deg,var(--green) 0 10px,transparent 10px 16px);width:0;animation:load 1.8s ease forwards .5s}
+@keyframes load{to{width:100%}}
+</style>
+</head>
+<body>
+<div id="stage">
+<div id="deck">
+  <div class="gridbg"></div>
+
+  <!-- ================= SLIDE 1 : TITLE ================= -->
+  <section class="slide active">
+    <div class="content">
+      <div class="kicker">CAPSTONE // RTMSSU // SEC-PROJ <b>v1.0</b></div>
+      <div style="margin-top:36px">
+        <h1 class="type">WIRELESS<br>RECON DEVICE</h1>
+      </div>
+      <div style="display:flex;gap:14px;margin-top:30px">
+        <span class="chip">ESP32-WROOM</span><span class="chip amber">WiFi + BLE</span><span class="chip">OPEN-SOURCE C++</span>
+      </div>
+      <div class="term" style="margin-top:44px;max-width:640px">
+        <div class="termbar"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span><span style="margin-left:8px">boot.log — /dev/ttyUSB0 @115200</span></div>
+        <div class="termbody" style="font-size:14px;line-height:1.9">
+          <div><span class="prompt">$</span> <span class="p">flash firmware... OK</span></div>
+          <div><span class="prompt">$</span> <span class="p">init wifi_stack... OK</span></div>
+          <div><span class="prompt">$</span> <span class="p">init ble_stack... OK</span></div>
+          <div><span class="prompt">$</span> <span style="color:var(--ink-dim)">starting recon interface</span><span class="cursor"></span></div>
+          <div class="barwrap"><div class="bar"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="ascii" style="position:absolute;right:60px;top:80px;text-align:right;color:var(--green-dim)">
+  .-----.   .------.
+ /  ___ \  | ESP32 |
+| ( o o )  | recon|
+ \  \_/ /  '--|--'
+  '---'       |
+    [====] SCANNING
+    </div>
+    <div class="foot"><span>WIRELESS RECON // ESP32</span><span class="pg">01 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 2 : OVERVIEW ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">01 // <b>PROJECT OVERVIEW</b></div>
+      <h2 style="margin-top:14px">$ ./overview --brief</h2>
+      <div class="cols" style="margin-top:34px;flex:1">
+        <div class="term">
+          <div class="termbar"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span><span style="margin-left:8px">what_it_is</span></div>
+          <div class="termbody">
+            <div class="row"><span class="n">&gt;</span><span style="color:var(--ink);font-size:14px;line-height:1.7">Portable <b style="color:var(--green)">WiFi &amp; BLE reconnaissance device</b> on an ESP32-WROOM microcontroller — real-time wireless network scanning and device enumeration in your pocket.</span></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:20px">
+          <div class="term"><div class="termbar"><span style="margin-left:0">ATTRIBUTES</span></div>
+            <div class="termbody" style="padding:16px 26px">
+              <div class="row"><span class="n">01</span><span class="t">Hardware-based</span><span class="d">Fieldable, no external dependencies</span></div>
+              <div class="row"><span class="n">02</span><span class="t">Open-source</span><span class="d">Firmware in Arduino C++</span></div>
+              <div class="row"><span class="n">03</span><span class="t">Real-time</span><span class="d">Live scan output over serial</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>OVERVIEW</span><span class="pg">02 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 3 : PROBLEM ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">02 // <b>PROBLEM STATEMENT</b></div>
+      <h2 style="margin-top:14px">$ audit --why</h2>
+      <div class="cols" style="margin-top:34px">
+        <div>
+          <div class="row"><span class="n">ERR1</span><span class="t">No portable real-time audit</span><span class="d">No easy way to audit wireless security in real-time on a handheld device</span></div>
+          <div class="row"><span class="n">ERR2</span><span class="t">Laptop-bound tools</span><span class="d">Security pros rely on laptops + software — expensive, bulky</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="n">ERR3</span><span class="t">Slow IoT diagnostics</span><span class="d">IoT devs need quick network checks without booting a full system</span></div>
+          <div class="row"><span class="n">ERR4</span><span class="t">Invisible venue threats</span><span class="d">Event security teams lack visible wireless monitoring capability</span></div>
+        </div>
+      </div>
+      <div style="margin-top:34px;display:flex;gap:60px;align-items:flex-end">
+        <div><div class="big">4</div><div class="biglbl">pain points identified</div></div>
+        <div class="ascii" style="font-size:12px;color:var(--red);opacity:.8">!! SIGNAL LOST — MANUAL AUDIT ONLY
+!! DEPLOY COST: HIGH
+!! FORM FACTOR: LAPTOP+ADAPTERS</div>
+      </div>
+    </div>
+    <div class="foot"><span>PROBLEM STATEMENT</span><span class="pg">03 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 4 : SOLUTION ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">03 // <b>SOLUTION</b></div>
+      <h2 style="margin-top:14px">$ deploy --pocket-sized</h2>
+      <div class="cols" style="margin-top:36px">
+        <div class="term">
+          <div class="termbar"><span class="dot g"></span><span style="margin-left:8px">solution.sh</span></div>
+          <div class="termbody" style="font-size:14px;line-height:2.1">
+            <div><span class="prompt">$</span> form_factor = <span class="p">"single-board, pocket-sized"</span></div>
+            <div><span class="prompt">$</span> interface&nbsp;&nbsp; = <span class="p">"USB plug-and-play, Arduino IDE"</span></div>
+            <div><span class="prompt">$</span> ui&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <span class="p">"interactive serial menu"</span></div>
+            <div><span class="prompt">$</span> modes&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <span class="p">"5 scan modes + device diagnostics"</span></div>
+            <div><span class="prompt">$</span> deps&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <span class="p">"ZERO — runs fully standalone"</span><span class="cursor"></span></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;gap:24px">
+          <div><div class="big">1</div><div class="biglbl">board · fits in pocket</div></div>
+          <div><div class="big">5</div><div class="biglbl">interactive scan modes</div></div>
+          <div><div class="big">0</div><div class="biglbl">external dependencies</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>SOLUTION</span><span class="pg">04 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 5 : KEY FEATURES ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">04 // <b>KEY FEATURES</b></div>
+      <h2 style="margin-top:14px">$ menu --list-modes</h2>
+      <div class="term" style="margin-top:28px">
+        <div class="termbar"><span class="dot r"></span><span class="dot a"></span><span class="dot g"></span><span style="margin-left:8px">ESP32_RECON :: MAIN MENU</span></div>
+        <div class="termbody" style="padding:14px 26px">
+          <div class="row"><span class="n">[1]</span><span class="t">WiFi Network Scan</span><span class="d">Detect all 2.4 GHz networks — RSSI, channel, security type</span></div>
+          <div class="row"><span class="n">[2]</span><span class="t">BLE Device Discovery</span><span class="d">Find Bluetooth devices (10s or 30s scan window)</span></div>
+          <div class="row"><span class="n">[3]</span><span class="t">Chip Information</span><span class="d">CPU cores, frequency, SDK version, MAC address</span></div>
+          <div class="row"><span class="n">[4]</span><span class="t">Memory/Flash Diagnostics</span><span class="d">Heap usage, PSRAM, sketch size, uptime</span></div>
+          <div class="row"><span class="n">[5]</span><span class="t">Real-time Output</span><span class="d">All results streamed to serial monitor — no logging overhead</span></div>
+        </div>
+      </div>
+      <div style="margin-top:22px;color:var(--ink-dim);font-size:13px">SELECT MODE <span style="color:var(--green)">1–5</span> AND PRESS ENTER — RESULTS APPEAR INSTANTLY IN SERIAL MONITOR<span class="cursor"></span></div>
+    </div>
+    <div class="foot"><span>KEY FEATURES</span><span class="pg">05 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 6 : TECH STACK ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">05 // <b>TECHNICAL STACK</b></div>
+      <h2 style="margin-top:14px">$ systeminfo --all</h2>
+      <div class="term" style="margin-top:28px">
+        <div class="termbody" style="padding:0">
+          <table>
+            <tr><th style="width:180px">Layer</th><th>Specification</th></tr>
+            <tr><td class="k">Hardware</td><td>ESP32-WROOM dual-core MCU + CP2102 USB-to-Serial bridge</td></tr>
+            <tr><td class="k">Software</td><td>Arduino IDE v2.x · ESP32 core package · BLE / WiFi APIs</td></tr>
+            <tr><td class="k">Language</td><td>C++ (Arduino framework) — open-source firmware</td></tr>
+            <tr><td class="k">Protocol</td><td>Serial communication @ <span style="color:var(--amber)">115200 baud</span> — interactive command menu</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="cols" style="margin-top:28px">
+        <div class="ascii" style="border:1px solid var(--border);padding:16px 20px;background:var(--panel);color:var(--green-dim);font-size:13px">[ USB ]──[CP2102]──[ESP32-WROOM]
+                       │
+              [ WiFi/BLE radio ]
+                       │
+              [ 2.4 GHz antenna ]</div>
+        <div class="sub" style="font-size:13.5px">Everything on a single board: radio, CPU, and USB interface. Flash it from the Arduino IDE, plug it in, open the serial monitor — and you're scanning. No OS, no drivers beyond the serial bridge, no setup friction.</div>
+      </div>
+    </div>
+    <div class="foot"><span>TECH STACK</span><span class="pg">06 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 7 : USE CASES ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">06 // <b>USE CASES</b></div>
+      <h2 style="margin-top:14px">$ whoami --operators</h2>
+      <div class="cols" style="margin-top:30px">
+        <div>
+          <div class="row"><span class="n">UC1</span><span class="t">Sec &amp; Pen-testing</span><span class="d">Wireless vulnerability assessment on-site</span></div>
+          <div class="row"><span class="n">UC2</span><span class="t">Event Security</span><span class="d">Detect rogue networks at hackathons &amp; conferences</span></div>
+          <div class="row"><span class="n">UC3</span><span class="t">IoT Development</span><span class="d">Network diagnostics during hardware debugging</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="n">UC4</span><span class="t">Cyber Education</span><span class="d">Hands-on lab for learning wireless scanning</span></div>
+          <div class="row"><span class="n">UC5</span><span class="t">Incident Response</span><span class="d">Quick field reconnaissance when minutes matter</span></div>
+        </div>
+      </div>
+      <div style="margin-top:32px;display:flex;gap:14px;flex-wrap:wrap">
+        <span class="chip">RED TEAM</span><span class="chip">BLUE TEAM</span><span class="chip amber">EDUCATORS</span><span class="chip amber">IoT BUILDERS</span><span class="chip">FIRST RESPONDERS</span>
+      </div>
+    </div>
+    <div class="foot"><span>USE CASES</span><span class="pg">07 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 8 : TIMELINE ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">07 // <b>IMPLEMENTATION TIMELINE</b></div>
+      <h2 style="margin-top:14px">$ git log --phases</h2>
+      <div class="cols" style="margin-top:30px">
+        <div class="tl">
+          <div class="ev done"><h4>Phase 1 — Firmware Core</h4><p>WiFi + BLE scanning, interactive serial menu</p></div>
+          <div class="ev now"><h4>Phase 2 — Hardware Assembly</h4><p>Board assembly + CP2102 driver setup</p></div>
+          <div class="ev"><h4>Phase 3 — Testing &amp; Validation</h4><p>Security audit, accuracy benchmarks</p></div>
+        </div>
+        <div class="tl">
+          <div class="ev"><h4>Phase 4 — Docs &amp; Release</h4><p>Documentation + open-source publication</p></div>
+          <div class="ev"><h4>Phase 5 — Advanced Features</h4><p>Cloud dashboard · payload injection · threat intel integration</p></div>
+          <div class="term" style="margin-top:12px"><div class="termbody" style="padding:14px 20px;font-size:13px">
+            <span class="prompt">$</span> status: <span style="color:var(--amber)">PHASE 2/5 IN PROGRESS</span><br>
+            <span class="prompt">$</span> firmware: <span style="color:var(--green)">COMPILED &amp; RUNNING</span>
+          </div></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>TIMELINE</span><span class="pg">08 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 9 : MARKET ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">08 // <b>MARKET POSITIONING</b></div>
+      <h2 style="margin-top:14px">$ compare --vs-competitors</h2>
+      <div class="term" style="margin-top:28px">
+        <div class="termbody" style="padding:0">
+          <table>
+            <tr><th style="width:220px">Dimension</th><th>Commercial rigs<br>(Kismet, Aircrack-ng)</th><th style="color:var(--green)">ESP32 Recon</th></tr>
+            <tr><td class="k">Cost</td><td>High — laptop + adapters + licenses</td><td style="color:var(--green)">Low — single low-cost board</td></tr>
+            <tr><td class="k">Form factor</td><td>Bulky, laptop-based scanners</td><td style="color:var(--green)">Fieldable, pocket-sized</td></tr>
+            <tr><td class="k">Education</td><td>Steep learning curve</td><td style="color:var(--green)">High value for cybersecurity programs</td></tr>
+            <tr><td class="k">Market</td><td>Individual practitioners</td><td style="color:var(--green)">B2B: security firms, event organizers</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>MARKET POSITIONING</span><span class="pg">09 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 10 : USP ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">09 // <b>UNIQUE SELLING POINTS</b></div>
+      <h2 style="margin-top:14px">$ cat advantages.txt</h2>
+      <div class="cols" style="margin-top:34px">
+        <div class="term"><div class="termbar"><span class="dot g"></span><span style="margin-left:8px">USP 1–2</span></div>
+          <div class="termbody" style="padding:14px 26px">
+            <div class="row"><span class="n">01</span><span class="t">Hardware-based</span><span class="d">Stealth footprint — no OS dependencies</span></div>
+            <div class="row"><span class="n">02</span><span class="t">Beginner-friendly</span><span class="d">Arduino IDE, plug-and-play setup</span></div>
+          </div>
+        </div>
+        <div class="term"><div class="termbar"><span class="dot a"></span><span style="margin-left:8px">USP 3–4</span></div>
+          <div class="termbody" style="padding:14px 26px">
+            <div class="row"><span class="n">03</span><span class="t">Extensible</span><span class="d">Open-source and hackable by design</span></div>
+            <div class="row"><span class="n">04</span><span class="t">Real-time feedback</span><span class="d">Instant results, zero waiting</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:30px" class="ascii" style="color:var(--green-dim)">/// FOUR DIFFERENTIATORS — ONE BOARD ///</div>
+    </div>
+    <div class="foot"><span>UNIQUE SELLING POINTS</span><span class="pg">10 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 11 : CHALLENGES ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">10 // <b>CHALLENGES &amp; MITIGATION</b></div>
+      <h2 style="margin-top:14px">$ risk assess --verbose</h2>
+      <div class="term" style="margin-top:26px">
+        <div class="termbody" style="padding:0">
+          <table>
+            <tr><th style="width:260px">Challenge</th><th>Mitigation Strategy</th></tr>
+            <tr><td class="k">Limited antenna range</td><td>Designed for field testing; range specs documented</td></tr>
+            <tr><td class="k">2.4 GHz only</td><td>Sufficient for current use cases; 5 GHz upgrade in Phase 2</td></tr>
+            <tr><td class="k">Regulatory compliance</td><td style="color:var(--green)">Non-transmitting (passive scan) — legal worldwide</td></tr>
+            <tr><td class="k">User learning curve</td><td>Detailed docs + Arduino IDE familiarity expected</td></tr>
+          </table>
+        </div>
+      </div>
+      <div style="margin-top:24px;font-size:13px;color:var(--ink-dim)">PASSIVE MODE: <span style="color:var(--green)">RX ONLY</span> — NO TRANSMISSIONS EMITTED DURING SCAN OPERATIONS</div>
+    </div>
+    <div class="foot"><span>CHALLENGES &amp; MITIGATION</span><span class="pg">11 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 12 : TEAM ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">11 // <b>TEAM &amp; ADVISORSHIP</b></div>
+      <h2 style="margin-top:14px">$ users --group</h2>
+      <div class="cols" style="margin-top:34px">
+        <div style="display:flex;flex-direction:column;gap:26px;align-items:flex-start">
+          <div><div class="big">4</div><div class="biglbl">member project group</div></div>
+          <div><div class="big" style="color:var(--green);font-size:52px;text-shadow:0 0 12px rgba(57,255,110,.4)">PROF. YASH VYAS</div><div class="biglbl">advisor — rtmssu</div></div>
+        </div>
+        <div class="term">
+          <div class="termbar"><span class="dot g"></span><span style="margin-left:8px">roles.txt</span></div>
+          <div class="termbody" style="padding:16px 26px">
+            <div class="row"><span class="n">01</span><span class="t">Firmware development</span><span class="d">WiFi/BLE scan engine, menu system</span></div>
+            <div class="row"><span class="n">02</span><span class="t">Hardware integration</span><span class="d">Board assembly, driver setup</span></div>
+            <div class="row"><span class="n">03</span><span class="t">Testing</span><span class="d">Validation &amp; accuracy benchmarks</span></div>
+            <div class="row"><span class="n">04</span><span class="t">Documentation</span><span class="d">Guides, manual, capstone docs</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>TEAM</span><span class="pg">12 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 13 : DELIVERABLES ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">12 // <b>DELIVERABLES</b></div>
+      <h2 style="margin-top:14px">$ ls -la ./output/</h2>
+      <div class="term" style="margin-top:26px">
+        <div class="termbody" style="padding:10px 26px;font-size:14px">
+          <div class="row"><span class="n" style="color:var(--green)">rw</span><span class="t" style="min-width:340px">esp32_device.bin</span><span class="d">Complete, flashed ESP32 device</span></div>
+          <div class="row"><span class="n" style="color:var(--green)">rw</span><span class="t" style="min-width:340px">github_repo/</span><span class="d">Open-source repo — firmware + docs</span></div>
+          <div class="row"><span class="n" style="color:var(--green)">rw</span><span class="t" style="min-width:340px">setup_guide.md</span><span class="d">Beginner-friendly setup guide</span></div>
+          <div class="row"><span class="n" style="color:var(--green)">rw</span><span class="t" style="min-width:340px">user_manual.pdf</span><span class="d">Command reference + examples</span></div>
+          <div class="row"><span class="n" style="color:var(--green)">rw</span><span class="t" style="min-width:340px">capstone_docs.pdf</span><span class="d">Architecture, design decisions</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>DELIVERABLES</span><span class="pg">13 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 14 : ROADMAP ================= -->
+  <section class="slide">
+    <div class="content">
+      <div class="kicker">13 // <b>FUTURE ROADMAP</b></div>
+      <h2 style="margin-top:14px">$ roadmap --next</h2>
+      <div class="tl" style="margin-top:34px">
+        <div class="ev"><h4>Mobile App Companion</h4><p>iOS / Android client for on-the-go monitoring</p></div>
+        <div class="ev"><h4>Cloud Sync</h4><p>Persist scan history across sessions</p></div>
+        <div class="ev"><h4>Automated Threat Detection</h4><p>Pattern recognition + real-time alerting</p></div>
+        <div class="ev"><h4>SIEM Integration</h4><p>Feed scan data into enterprise security pipelines</p></div>
+        <div class="ev"><h4>Additional Protocols</h4><p>LoRaWAN and Zigbee support</p></div>
+      </div>
+    </div>
+    <div class="foot"><span>FUTURE ROADMAP</span><span class="pg">14 / 15</span></div>
+  </section>
+
+  <!-- ================= SLIDE 15 : END ================= -->
+  <section class="slide">
+    <div class="content" style="justify-content:center;align-items:center;text-align:center">
+      <div class="ascii" style="color:var(--green-dim);font-size:16px">┌─────────────────────────────┐
+│   CONNECTION TERMINATED     │
+└─────────────────────────────┘</div>
+      <h1 class="type" style="margin-top:36px">THANK YOU</h1>
+      <div style="margin-top:24px;font-size:15px;color:var(--ink-dim);line-height:2">
+        <span class="prompt">$</span> <span class="p">project: wireless recon device</span><br>
+        <span class="prompt">$</span> <span class="p">advisor: prof. yash vyas (rtmssu)</span><br>
+        <span class="prompt">$</span> <span style="color:var(--amber)">questions?</span> <span class="cursor"></span>
+      </div>
+    </div>
+    <div class="foot"><span>EOF</span><span class="pg">15 / 15</span></div>
+  </section>
+
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
+  <div class="flicker"></div>
+</div>
+</div>
+
+<button class="navbtn" id="prev">◄</button>
+<button class="navbtn" id="next">►</button>
+<div id="counter">01/15</div>
+
+<script>
+const slides=[...document.querySelectorAll('.slide')];
+let cur=0;
+function show(i){
+  cur=Math.max(0,Math.min(slides.length-1,i));
+  slides.forEach((s,j)=>s.classList.toggle('active',j===cur));
+  document.getElementById('counter').textContent=String(cur+1).padStart(2,'0')+'/'+slides.length;
+}
+document.getElementById('next').onclick=()=>show(cur+1);
+document.getElementById('prev').onclick=()=>show(cur-1);
+document.addEventListener('keydown',e=>{
+  if(['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)){e.preventDefault();show(cur+1);}
+  if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){e.preventDefault();show(cur-1);}
+  if(e.key==='Home')show(0); if(e.key==='End')show(slides.length-1);
+});
+function fit(){
+  const s=Math.min(innerWidth/1280,innerHeight/720)*0.97;
+  document.getElementById('deck').style.transform=`scale(${s})`;
+}
+addEventListener('resize',fit);fit();show(0);
+</script>
+</body>
+</html>
